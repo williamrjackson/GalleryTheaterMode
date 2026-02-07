@@ -3,35 +3,16 @@ import AVFoundation
 import AppKit
 import UniformTypeIdentifiers
 
-// MARK: - Persistent Settings
-
-private enum PrefKey {
-    static let targetWidth = "theater.targetWidth"
-    static let offsetY = "theater.offsetY"
-}
-
-private struct TheaterPrefs {
-    static func loadInt(_ key: String, default def: Int) -> Int {
-        let v = UserDefaults.standard.object(forKey: key) as? Int
-        return v ?? def
-    }
-    static func loadBool(_ key: String, default def: Bool) -> Bool {
-        let v = UserDefaults.standard.object(forKey: key) as? Bool
-        return v ?? def
-    }
-    static func saveInt(_ key: String, _ value: Int) {
-        UserDefaults.standard.set(value, forKey: key)
-    }
-    static func saveBool(_ key: String, _ value: Bool) {
-        UserDefaults.standard.set(value, forKey: key)
-    }
-}
 
 // MARK: - UI
 
 struct ContentView: View {
-    @State private var widthText: String = "\(TheaterPrefs.loadInt(PrefKey.targetWidth, default: 1600))"
-    @State private var yText: String = "\(TheaterPrefs.loadInt(PrefKey.offsetY, default: 0))"
+    @State private var widthText: String = "\(TheaterPrefs.loadInt(PrefKey.targetWidth))"
+    @State private var yText: String = "\(TheaterPrefs.loadInt(PrefKey.offsetY))"
+    @State private var bgColor: NSColor = TheaterPrefs.loadColor(
+        r: PrefKey.bgColorR, g: PrefKey.bgColorG, b: PrefKey.bgColorB, a: PrefKey.bgColorA)
+    @State private var rectColor: NSColor = TheaterPrefs.loadColor(
+        r: PrefKey.rectColorR, g: PrefKey.rectColorG, b: PrefKey.rectColorB, a: PrefKey.rectColorA)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -42,12 +23,31 @@ struct ContentView: View {
                 LabeledTextField(label: "Offset Y", text: $yText, width: 140)
                 Spacer()
             }
+            .onReceive(NotificationCenter.default.publisher(for: .theaterOffsetYDidChange)) { _ in
+                yText = "\(TheaterPrefs.loadInt(PrefKey.offsetY, default: 0))"
+            }
+            HStack(spacing: 18) {
+                ColorPicker("Background", selection: Binding(
+                    get: { Color(nsColor: bgColor) },
+                    set: { newVal in bgColor = NSColor(newVal) }
+                ))
+                .frame(width: 220)
 
-            Button("Choose Video and Play") {
+                ColorPicker("Rectangle", selection: Binding(
+                    get: { Color(nsColor: rectColor) },
+                    set: { newVal in rectColor = NSColor(newVal) }
+                ))
+                .frame(width: 220)
+
+                Spacer()
+            }
+
+            Button("Load Video File") {
                 chooseAndPlay()
             }
-            .keyboardShortcut(.defaultAction)
-
+            .keyboardShortcut(.defaultAction)         
+            Spacer()
+            Spacer()
             Text("""
             Playback Controls:
             
@@ -64,16 +64,20 @@ struct ContentView: View {
             Spacer()
         }
         .padding(16)
-        .frame(minWidth: 560, minHeight: 260)
+        .fixedSize() // <- tells SwiftUI “don’t expand; use intrinsic size”
     }
 
     private func chooseAndPlay() {
         let targetW = Int(widthText) ?? 1600
         let oy = Int(yText) ?? 0
-
+        
         // Persist base settings
         TheaterPrefs.saveInt(PrefKey.targetWidth, targetW)
         TheaterPrefs.saveInt(PrefKey.offsetY, oy)
+        TheaterPrefs.saveColor(
+            bgColor, r: PrefKey.bgColorR, g: PrefKey.bgColorG, b: PrefKey.bgColorB, a: PrefKey.bgColorA)
+        TheaterPrefs.saveColor(
+            rectColor, r: PrefKey.rectColorR, g: PrefKey.rectColorG, b: PrefKey.rectColorB, a: PrefKey.rectColorA)
 
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.movie, .mpeg4Movie, .quickTimeMovie]
@@ -88,7 +92,9 @@ struct ContentView: View {
                 TheaterWindowController.present(
                     url: url,
                     targetWidth: CGFloat(targetW),
-                    offsetY: CGFloat(oy)
+                    offsetY: CGFloat(oy),
+                    backgroundColor: bgColor,
+                    rectColor: rectColor
                 )
             }
         }
@@ -117,7 +123,9 @@ final class TheaterWindowController: NSWindowController {
 
     static func present(url: URL,
                         targetWidth: CGFloat,
-                        offsetY: CGFloat) {
+                        offsetY: CGFloat,
+                        backgroundColor: NSColor,
+                        rectColor: NSColor) {
         // Prefer external display if present (projector is often last)
         let targetScreen = NSScreen.screens.last ?? NSScreen.main!
         let frame = targetScreen.frame
@@ -126,7 +134,9 @@ final class TheaterWindowController: NSWindowController {
             url: url,
             screenFrame: frame,
             targetWidth: targetWidth,
-            offsetY: offsetY
+            offsetY: offsetY,
+            backgroundColor: backgroundColor,
+            rectColor: rectColor
         )
 
         let win = KeyableBorderlessWindow(contentRect: frame,
@@ -142,6 +152,7 @@ final class TheaterWindowController: NSWindowController {
         win.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         win.contentViewController = vc
         win.makeKeyAndOrderFront(nil)
+        win.backgroundColor = backgroundColor
         win.makeMain()
         NSApp.activate(ignoringOtherApps: true)
 
@@ -153,10 +164,12 @@ final class TheaterWindowController: NSWindowController {
 
         let controller = TheaterWindowController(window: win)
         controller.showWindow(nil)
+        NSCursor.hide()
 
         controller.eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { event in
             // ESC closes
             if event.keyCode == 53 {
+                NSCursor.unhide()
                 win.close()
                 return nil
             }
@@ -191,7 +204,6 @@ final class TheaterWindowController: NSWindowController {
             }
         }
 
-
         NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: win, queue: .main) { _ in
             if let mon = controller.eventMonitor {
                 NSEvent.removeMonitor(mon)
@@ -207,6 +219,12 @@ final class TheaterPlayerViewController: NSViewController {
     private let url: URL
     private let screenFrame: CGRect
     private let targetWidth: CGFloat
+    private let backgroundColor: NSColor
+    private let rectColor: NSColor
+
+    private var placeholderLayer: CALayer?
+    private var hasStartedPlayback = false
+
     private var offsetY: CGFloat
 
     private var player: AVPlayer?
@@ -221,7 +239,11 @@ final class TheaterPlayerViewController: NSViewController {
     init(url: URL,
          screenFrame: CGRect,
          targetWidth: CGFloat,
-         offsetY: CGFloat) {
+         offsetY: CGFloat,
+         backgroundColor: NSColor,
+         rectColor: NSColor) {
+        self.backgroundColor = backgroundColor
+        self.rectColor = rectColor
         self.url = url
         self.screenFrame = screenFrame
         self.targetWidth = targetWidth
@@ -234,7 +256,7 @@ final class TheaterPlayerViewController: NSViewController {
     override func loadView() {
         self.view = NSView(frame: screenFrame)
         self.view.wantsLayer = true
-        self.view.layer?.backgroundColor = NSColor.black.cgColor
+        self.view.layer?.backgroundColor = backgroundColor.cgColor
     }
 
     override func viewDidAppear() {
@@ -245,39 +267,160 @@ final class TheaterPlayerViewController: NSViewController {
     func adjustOffsetY(by delta: CGFloat) {
         offsetY += delta
         TheaterPrefs.saveInt(PrefKey.offsetY, Int(offsetY.rounded()))
-        repositionLayer()
+        repositionLayers()
+
+        NotificationCenter.default.post(name: .theaterOffsetYDidChange, object: nil)
+    }
+
+
+    private func repositionLayers() {
+        let newFrame = computeLayerFrame()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        playerLayer?.frame = newFrame
+        placeholderLayer?.frame = newFrame
+        CATransaction.commit()
+    }
+    
+    private func runInitialTransition() {
+        let d1: CFTimeInterval = 2.0
+        let d2: CFTimeInterval = 2.0
+        self.playerLayer?.opacity = 0.0
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { [weak self] in
+            guard let self else { return }
+
+            // Fade player in, then play
+            self.playerLayer?.removeAnimation(forKey: "playerIn")
+
+            let anim = CABasicAnimation(keyPath: "opacity")
+            anim.fromValue = self.playerLayer?.presentation()?.opacity ?? 0.0
+            anim.toValue = 1.0
+            anim.duration = d2
+            anim.timingFunction = CAMediaTimingFunction(name: .linear)
+            anim.beginTime = CACurrentMediaTime()
+
+            self.playerLayer?.add(anim, forKey: "playerIn")
+
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            self.playerLayer?.opacity = 1.0
+            CATransaction.commit()
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + d2) {
+                self.player?.play()
+            }
+        }
+
+        fadeBackgroundToBlack(duration: d1)
+        fadeFromPlaceholder(duration: d1)
+
+        CATransaction.commit()
+    }
+
+    private func fadeBackgroundToBlack(duration: CFTimeInterval = 3.0) {
+        guard let root = self.view.layer else { return }
+
+        // Kill any previous background animation so they don't fight.
+        root.removeAnimation(forKey: "bgToBlack")
+
+        let from = root.presentation()?.backgroundColor ?? root.backgroundColor ?? NSColor.black.cgColor
+        let to = NSColor.black.cgColor
+
+        let anim = CABasicAnimation(keyPath: "backgroundColor")
+        anim.fromValue = from
+        anim.toValue = to
+        anim.duration = duration
+        anim.timingFunction = CAMediaTimingFunction(name: .linear)
+        anim.beginTime = CACurrentMediaTime()   // <-- makes timing deterministic
+        anim.isRemovedOnCompletion = true
+
+        root.add(anim, forKey: "bgToBlack")
+
+        // Set final model value without implicit animation
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        root.backgroundColor = to
+        CATransaction.commit()
+    }
+    private func fadeFromPlaceholder(duration: CFTimeInterval = 3.0) {
+        guard let layer = placeholderLayer else { return }
+
+        layer.removeAnimation(forKey: "placeholderFade")
+
+        let from = layer.presentation()?.opacity ?? layer.opacity
+        let anim = CABasicAnimation(keyPath: "opacity")
+        anim.fromValue = from
+        anim.toValue = 0.0
+        anim.duration = duration
+        anim.timingFunction = CAMediaTimingFunction(name: .linear)
+        anim.beginTime = CACurrentMediaTime()
+        anim.isRemovedOnCompletion = true
+
+        layer.add(anim, forKey: "placeholderFade")
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.opacity = 0.0
+        CATransaction.commit()
     }
 
     private func startPlayback() {
+        guard let root = self.view.layer else { return }
+
+        // 1) Set background immediately so you can at least see *something*
+        root.backgroundColor = backgroundColor.cgColor
+
+        // 2) Build asset + determine video size (with a sane fallback)
         let asset = AVURLAsset(url: url)
-        let item = AVPlayerItem(asset: asset)
 
-        let p = AVPlayer(playerItem: item)
-        self.player = p
-
-        let layer = AVPlayerLayer(player: p)
-        layer.videoGravity = .resizeAspect
-        self.playerLayer = layer
-        
-        // Determine natural size safely
-        var videoSize = CGSize(width: 1920, height: 1080)
+        var videoSize = CGSize(width: 1920, height: 1080) // fallback
         if let track = asset.tracks(withMediaType: .video).first {
             let transformed = track.naturalSize.applying(track.preferredTransform)
             videoSize = CGSize(width: abs(transformed.width), height: abs(transformed.height))
         }
 
         let aspect = videoSize.height / max(videoSize.width, 1)
-        targetHeight = targetWidth * aspect
+        targetHeight = max(1, targetWidth * aspect) // prevent 0
 
-        layer.frame = computeLayerFrame()
-        self.view.layer?.addSublayer(layer)
-        
+        // 3) Create player + layer (but keep hidden for preview)
+        let item = AVPlayerItem(asset: asset)
+        let p = AVPlayer(playerItem: item)
+        self.player = p
+
+        let pl = AVPlayerLayer(player: p)
+        pl.videoGravity = .resizeAspect
+        pl.opacity = 1.0
+        self.playerLayer = pl
+
+        // 4) Create placeholder rectangle
+        let rect = CALayer()
+        rect.backgroundColor = rectColor.cgColor
+        rect.cornerRadius = 0
+        rect.opacity = 1.0
+        self.placeholderLayer = rect
+
+        // 5) Compute frame now that targetHeight is valid
+        let f = computeLayerFrame()
+        pl.frame = f
+        rect.frame = f
+
+        // Ensure placeholder is on top
+        pl.zPosition = 0
+        rect.zPosition = 1
+
+        // 6) Add sublayers (order matters visually)
+        root.addSublayer(pl)
+        root.addSublayer(rect)
+
+        // 7) Pause at start (don’t show first frame yet)
+        p.seek(to: .zero)
+        p.pause()
+
         setupOverlayIfNeeded()
-        pingOverlay() // show once at start
-
-        p.play()
+        pingOverlay()
     }
-    
+
     private func setupOverlayIfNeeded() {
         guard overlayLayer == nil else { return }
         guard let root = self.view.layer else { return }
@@ -357,14 +500,6 @@ final class TheaterPlayerViewController: NSViewController {
         CATransaction.commit()
     }
 
-    private func repositionLayer() {
-        guard let layer = playerLayer else { return }
-        CATransaction.begin()
-        CATransaction.setDisableActions(true) // no implicit animation
-        layer.frame = computeLayerFrame()
-        CATransaction.commit()
-    }
-
     private func computeLayerFrame() -> CGRect {
         // Center on screen; no X offset (always centered)
         let center = CGPoint(x: screenFrame.midX, y: screenFrame.midY)
@@ -382,8 +517,18 @@ final class TheaterPlayerViewController: NSViewController {
 
         return CGRect(origin: originInWindow, size: CGSize(width: targetWidth, height: targetHeight))
     }
+    
     func togglePlayPause() {
         guard let p = player else { return }
+
+        if !hasStartedPlayback {
+            hasStartedPlayback = true
+
+            // Fade background to black over 1 second (linear)
+            runInitialTransition()
+            return
+        }
+
         if p.timeControlStatus == .playing {
             p.pause()
         } else {

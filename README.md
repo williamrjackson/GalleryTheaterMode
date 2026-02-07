@@ -12,10 +12,12 @@ Built using native macOS frameworks (Swift + AVFoundation).
 
 - Borderless fullscreen playback 
 - Solid black background for projection environments
-- Adjustable target video width
+- Adjustable target video width, maintaining aspect ratio
 - Live vertical positioning during playback
 - Keyboard-based transport controls
-- Settings persistence (remembers width and Y offset)
+- Customizable "ready mode" with animated "house lights down" fade on initial play
+- Settings persistence (remembers width, Y offset & ready mode colors)
+- Hides mouse in presentation mode
 - Automatically prefers external display 
 - No runtime dependencies beyond macOS
 

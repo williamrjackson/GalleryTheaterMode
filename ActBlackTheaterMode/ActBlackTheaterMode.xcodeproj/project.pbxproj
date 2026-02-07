@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		6E0B83302F3733FC000851C8 /* Preferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E0B832F2F3733FC000851C8 /* Preferences.swift */; };
 		6E2BA58E2F35CC3E0055F115 /* ActBlackTheaterModeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E2BA58D2F35CC3E0055F115 /* ActBlackTheaterModeApp.swift */; };
 		6E2BA5902F35CC3E0055F115 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E2BA58F2F35CC3E0055F115 /* ContentView.swift */; };
 		6E2BA5922F35CC420055F115 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6E2BA5912F35CC420055F115 /* Assets.xcassets */; };
@@ -14,6 +15,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		6E0B832F2F3733FC000851C8 /* Preferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Preferences.swift; sourceTree = "<group>"; };
 		6E2BA58A2F35CC3E0055F115 /* ActBlackTheaterMode.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ActBlackTheaterMode.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6E2BA58D2F35CC3E0055F115 /* ActBlackTheaterModeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActBlackTheaterModeApp.swift; sourceTree = "<group>"; };
 		6E2BA58F2F35CC3E0055F115 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -57,6 +59,7 @@
 				6E2BA5912F35CC420055F115 /* Assets.xcassets */,
 				6E2BA5962F35CC420055F115 /* ActBlackTheaterMode.entitlements */,
 				6E2BA5932F35CC420055F115 /* Preview Content */,
+				6E0B832F2F3733FC000851C8 /* Preferences.swift */,
 			);
 			path = ActBlackTheaterMode;
 			sourceTree = "<group>";
@@ -141,6 +144,7 @@
 			files = (
 				6E2BA5902F35CC3E0055F115 /* ContentView.swift in Sources */,
 				6E2BA58E2F35CC3E0055F115 /* ActBlackTheaterModeApp.swift in Sources */,
+				6E0B83302F3733FC000851C8 /* Preferences.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
