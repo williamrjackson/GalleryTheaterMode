@@ -27,13 +27,14 @@ struct ContentView: View {
                 yText = "\(TheaterPrefs.loadInt(PrefKey.offsetY, default: 0))"
             }
             HStack(spacing: 18) {
+                Text("Ready State:").font(.headline)
                 ColorPicker("Background", selection: Binding(
                     get: { Color(nsColor: bgColor) },
                     set: { newVal in bgColor = NSColor(newVal) }
                 ))
                 .frame(width: 220)
 
-                ColorPicker("Rectangle", selection: Binding(
+                ColorPicker("Screen", selection: Binding(
                     get: { Color(nsColor: rectColor) },
                     set: { newVal in rectColor = NSColor(newVal) }
                 ))
