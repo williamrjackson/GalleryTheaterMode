@@ -22,6 +22,7 @@ enum PrefKey {
     static let rectColorB = "theater.rectColor.b"
     static let rectColorA = "theater.rectColor.a"
 }
+
 struct TheaterPrefs {
     static func loadInt(_ key: String, default def: Int) -> Int {
         let v = UserDefaults.standard.object(forKey: key) as? Int
@@ -29,6 +30,9 @@ struct TheaterPrefs {
     }
     static func loadInt(_ key: String) -> Int {
         UserDefaults.standard.integer(forKey: key)
+    }
+    static func loadString(_ key: String, default def: String = "") -> String {
+        UserDefaults.standard.string(forKey: key) ?? def
     }
     static func loadBool(_ key: String, default def: Bool) -> Bool {
         let v = UserDefaults.standard.object(forKey: key) as? Bool
@@ -46,6 +50,9 @@ struct TheaterPrefs {
         return NSColor(deviceRed: dr, green: dg, blue: db, alpha: da)
     }
     static func saveInt(_ key: String, _ value: Int) {
+        UserDefaults.standard.set(value, forKey: key)
+    }
+    static func saveString(_ key: String, _ value: String) {
         UserDefaults.standard.set(value, forKey: key)
     }
     static func saveBool(_ key: String, _ value: Bool) {
@@ -72,16 +79,16 @@ func registerDefaultPreferences() {
         PrefKey.offsetY: 0,
 
         // Background default
-        PrefKey.bgColorR: 0.267,
-        PrefKey.bgColorG: 0.094,
-        PrefKey.bgColorB: 0.075,
+        PrefKey.bgColorR: 0.541,
+        PrefKey.bgColorG: 0.145,
+        PrefKey.bgColorB: 0.200,
         PrefKey.bgColorA: 1.0,
 
         // Placeholder rectangle default
         PrefKey.rectColorR: 0.941,
         PrefKey.rectColorG: 0.824,
         PrefKey.rectColorB: 0.886,
-        PrefKey.rectColorA: 1.0
+        PrefKey.rectColorA: 1.0,
     ])
 }
 

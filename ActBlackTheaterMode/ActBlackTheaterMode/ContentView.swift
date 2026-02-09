@@ -3,9 +3,7 @@ import AVFoundation
 import AppKit
 import UniformTypeIdentifiers
 
-
 // MARK: - UI
-
 struct ContentView: View {
     @State private var widthText: String = "\(TheaterPrefs.loadInt(PrefKey.targetWidth))"
     @State private var yText: String = "\(TheaterPrefs.loadInt(PrefKey.offsetY))"
@@ -13,6 +11,9 @@ struct ContentView: View {
         r: PrefKey.bgColorR, g: PrefKey.bgColorG, b: PrefKey.bgColorB, a: PrefKey.bgColorA)
     @State private var rectColor: NSColor = TheaterPrefs.loadColor(
         r: PrefKey.rectColorR, g: PrefKey.rectColorG, b: PrefKey.rectColorB, a: PrefKey.rectColorA)
+
+    // Session-only placeholder image (no persistence)
+    @State private var placeholderImageURL: URL? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -43,10 +44,26 @@ struct ContentView: View {
                 Spacer()
             }
 
+            // Placeholder image: session-only, always Fit, no checkbox
+            HStack(spacing: 10) {
+                Button("Choose Placeholder Image…") {
+                    choosePlaceholderImage()
+                }
+
+                Text("Placeholder Image:")
+                    .foregroundStyle(.secondary)
+
+                Text(placeholderImageURL?.lastPathComponent ?? "None")
+                    .font(.callout)
+                    .foregroundStyle(placeholderImageURL == nil ? .secondary : .primary)
+
+                Spacer()
+            }
+
             Button("Load Video File") {
                 chooseAndPlay()
             }
-            .keyboardShortcut(.defaultAction)         
+            .keyboardShortcut(.defaultAction)
             Spacer()
             Spacer()
             Text("""
@@ -68,6 +85,21 @@ struct ContentView: View {
         .fixedSize() // <- tells SwiftUI “don’t expand; use intrinsic size”
     }
 
+    private func choosePlaceholderImage() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.png, .jpeg, .tiff]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+
+        panel.begin { resp in
+            guard resp == .OK, let url = panel.url else { return }
+            DispatchQueue.main.async {
+                placeholderImageURL = url
+            }
+        }
+    }
+
     private func chooseAndPlay() {
         let targetW = Int(widthText) ?? 1600
         let oy = Int(yText) ?? 0
@@ -79,7 +111,7 @@ struct ContentView: View {
             bgColor, r: PrefKey.bgColorR, g: PrefKey.bgColorG, b: PrefKey.bgColorB, a: PrefKey.bgColorA)
         TheaterPrefs.saveColor(
             rectColor, r: PrefKey.rectColorR, g: PrefKey.rectColorG, b: PrefKey.rectColorB, a: PrefKey.rectColorA)
-
+        
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.movie, .mpeg4Movie, .quickTimeMovie]
         panel.allowsMultipleSelection = false
@@ -95,8 +127,11 @@ struct ContentView: View {
                     targetWidth: CGFloat(targetW),
                     offsetY: CGFloat(oy),
                     backgroundColor: bgColor,
-                    rectColor: rectColor
+                    rectColor: rectColor,
+                    placeholderImagePath: placeholderImageURL?.path,
+                    placeholderImageMode: "fit"
                 )
+
             }
         }
     }
@@ -126,7 +161,9 @@ final class TheaterWindowController: NSWindowController {
                         targetWidth: CGFloat,
                         offsetY: CGFloat,
                         backgroundColor: NSColor,
-                        rectColor: NSColor) {
+                        rectColor: NSColor,
+                        placeholderImagePath: String?,
+                        placeholderImageMode: String) {
         // Prefer external display if present (projector is often last)
         let targetScreen = NSScreen.screens.last ?? NSScreen.main!
         let frame = targetScreen.frame
@@ -137,7 +174,9 @@ final class TheaterWindowController: NSWindowController {
             targetWidth: targetWidth,
             offsetY: offsetY,
             backgroundColor: backgroundColor,
-            rectColor: rectColor
+            rectColor: rectColor,
+            placeholderImagePath: placeholderImagePath,
+            placeholderImageMode: placeholderImageMode
         )
 
         let win = KeyableBorderlessWindow(contentRect: frame,
@@ -147,17 +186,17 @@ final class TheaterWindowController: NSWindowController {
                                          screen: targetScreen)
 
         win.level = .mainMenu + 2
-        win.backgroundColor = .black
+        win.backgroundColor = backgroundColor
         win.isOpaque = true
         win.hasShadow = false
         win.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         win.contentViewController = vc
+
         win.makeKeyAndOrderFront(nil)
-        win.backgroundColor = backgroundColor
         win.makeMain()
         NSApp.activate(ignoringOtherApps: true)
 
-        // Optional: defocus any text field in the config window
+        // Defocus any text field in the config window (prevents typing behind)
         NSApp.mainWindow?.makeFirstResponder(nil)
 
         win.makeKeyAndOrderFront(nil)
@@ -165,18 +204,19 @@ final class TheaterWindowController: NSWindowController {
 
         let controller = TheaterWindowController(window: win)
         controller.showWindow(nil)
+
+        // Hide cursor in theater mode
         NSCursor.hide()
 
         controller.eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { event in
             // ESC closes
             if event.keyCode == 53 {
-                NSCursor.unhide()
                 win.close()
                 return nil
             }
 
-            // Space toggles play/pause
-            if event.keyCode == 49 { // Space
+            // Space toggles play/pause (first press triggers intro transition)
+            if event.keyCode == 49 {
                 vc.togglePlayPause()
                 return nil
             }
@@ -210,6 +250,12 @@ final class TheaterWindowController: NSWindowController {
                 NSEvent.removeMonitor(mon)
                 controller.eventMonitor = nil
             }
+
+            // Always restore cursor, even if window closed not via ESC
+            NSCursor.unhide()
+
+            // Ensure config UI reflects latest value when theater closes
+            NotificationCenter.default.post(name: .theaterOffsetYDidChange, object: nil)
         }
     }
 }
@@ -223,14 +269,18 @@ final class TheaterPlayerViewController: NSViewController {
     private let backgroundColor: NSColor
     private let rectColor: NSColor
 
-    private var placeholderLayer: CALayer?
-    private var hasStartedPlayback = false
+    private let placeholderImagePath: String?
+    private let placeholderImageMode: String
 
+    private var placeholderLayer: CALayer?
+    private var placeholderImageLayer: CALayer?
+
+    private var hasStartedPlayback = false
     private var offsetY: CGFloat
 
     private var player: AVPlayer?
     private var playerLayer: AVPlayerLayer?
-    private var endObserver: Any?
+
     private var overlayLayer: CATextLayer?
     private var overlayHideWorkItem: DispatchWorkItem?
 
@@ -242,13 +292,18 @@ final class TheaterPlayerViewController: NSViewController {
          targetWidth: CGFloat,
          offsetY: CGFloat,
          backgroundColor: NSColor,
-         rectColor: NSColor) {
-        self.backgroundColor = backgroundColor
-        self.rectColor = rectColor
+         rectColor: NSColor,
+         placeholderImagePath: String?,
+         placeholderImageMode: String) {
+
         self.url = url
         self.screenFrame = screenFrame
         self.targetWidth = targetWidth
         self.offsetY = offsetY
+        self.backgroundColor = backgroundColor
+        self.rectColor = rectColor
+        self.placeholderImagePath = placeholderImagePath
+        self.placeholderImageMode = placeholderImageMode
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -269,53 +324,56 @@ final class TheaterPlayerViewController: NSViewController {
         offsetY += delta
         TheaterPrefs.saveInt(PrefKey.offsetY, Int(offsetY.rounded()))
         repositionLayers()
-
         NotificationCenter.default.post(name: .theaterOffsetYDidChange, object: nil)
     }
-
 
     private func repositionLayers() {
         let newFrame = computeLayerFrame()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+
         playerLayer?.frame = newFrame
         placeholderLayer?.frame = newFrame
+        placeholderImageLayer?.frame = placeholderLayer?.bounds ?? .zero
+        
         CATransaction.commit()
     }
     
+    // MARK: - Intro Transition (series)
+    // Fade background + placeholder for d1, then fade player in for d2, then play.
     private func runInitialTransition() {
         let d1: CFTimeInterval = 2.0
         let d2: CFTimeInterval = 2.0
-        self.playerLayer?.opacity = 0.0
-        CATransaction.begin()
-        CATransaction.setCompletionBlock { [weak self] in
-            guard let self else { return }
-
-            // Fade player in, then play
-            self.playerLayer?.removeAnimation(forKey: "playerIn")
-
-            let anim = CABasicAnimation(keyPath: "opacity")
-            anim.fromValue = self.playerLayer?.presentation()?.opacity ?? 0.0
-            anim.toValue = 1.0
-            anim.duration = d2
-            anim.timingFunction = CAMediaTimingFunction(name: .linear)
-            anim.beginTime = CACurrentMediaTime()
-
-            self.playerLayer?.add(anim, forKey: "playerIn")
-
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            self.playerLayer?.opacity = 1.0
-            CATransaction.commit()
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + d2) {
-                self.player?.play()
-            }
-        }
 
         fadeBackgroundToBlack(duration: d1)
         fadeFromPlaceholder(duration: d1)
 
+        fadePlayerIn(after: d1, duration: d2)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + d1 + d2) { [weak self] in
+            self?.player?.play()
+        }
+    }
+
+    private func fadePlayerIn(after delay: CFTimeInterval, duration: CFTimeInterval) {
+        guard let pl = playerLayer else { return }
+
+        pl.removeAnimation(forKey: "playerIn")
+
+        let anim = CABasicAnimation(keyPath: "opacity")
+        anim.fromValue = pl.presentation()?.opacity ?? pl.opacity
+        anim.toValue = 1.0
+        anim.duration = duration
+        anim.timingFunction = CAMediaTimingFunction(name: .linear)
+        anim.beginTime = CACurrentMediaTime() + delay
+        anim.fillMode = .both
+        anim.isRemovedOnCompletion = true
+
+        pl.add(anim, forKey: "playerIn")
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        pl.opacity = 1.0
         CATransaction.commit()
     }
 
@@ -333,7 +391,7 @@ final class TheaterPlayerViewController: NSViewController {
         anim.toValue = to
         anim.duration = duration
         anim.timingFunction = CAMediaTimingFunction(name: .linear)
-        anim.beginTime = CACurrentMediaTime()   // <-- makes timing deterministic
+        anim.beginTime = CACurrentMediaTime()
         anim.isRemovedOnCompletion = true
 
         root.add(anim, forKey: "bgToBlack")
@@ -344,12 +402,14 @@ final class TheaterPlayerViewController: NSViewController {
         root.backgroundColor = to
         CATransaction.commit()
     }
+
     private func fadeFromPlaceholder(duration: CFTimeInterval = 3.0) {
         guard let layer = placeholderLayer else { return }
 
         layer.removeAnimation(forKey: "placeholderFade")
 
         let from = layer.presentation()?.opacity ?? layer.opacity
+        
         let anim = CABasicAnimation(keyPath: "opacity")
         anim.fromValue = from
         anim.toValue = 0.0
@@ -382,7 +442,7 @@ final class TheaterPlayerViewController: NSViewController {
         }
 
         let aspect = videoSize.height / max(videoSize.width, 1)
-        targetHeight = max(1, targetWidth * aspect) // prevent 0
+        targetHeight = max(1, targetWidth * aspect)
 
         // 3) Create player + layer (but keep hidden for preview)
         let item = AVPlayerItem(asset: asset)
@@ -391,7 +451,7 @@ final class TheaterPlayerViewController: NSViewController {
 
         let pl = AVPlayerLayer(player: p)
         pl.videoGravity = .resizeAspect
-        pl.opacity = 1.0
+        pl.opacity = 0.0
         self.playerLayer = pl
 
         // 4) Create placeholder rectangle
@@ -399,6 +459,7 @@ final class TheaterPlayerViewController: NSViewController {
         rect.backgroundColor = rectColor.cgColor
         rect.cornerRadius = 0
         rect.opacity = 1.0
+        rect.masksToBounds = true
         self.placeholderLayer = rect
 
         // 5) Compute frame now that targetHeight is valid
@@ -415,6 +476,26 @@ final class TheaterPlayerViewController: NSViewController {
         root.addSublayer(rect)
 
         // 7) Pause at start (don’t show first frame yet)
+        // Optional placeholder image inside rect
+        if let path = placeholderImagePath, !path.isEmpty,
+           let nsImage = NSImage(contentsOfFile: path),
+           let cg = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+            
+            print("Placeholder image exists:", FileManager.default.fileExists(atPath: path))
+            print("NSImage load:", NSImage(contentsOfFile: path) as Any)
+
+            let imgLayer = CALayer()
+            imgLayer.frame = rect.bounds
+            imgLayer.contents = cg
+            imgLayer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
+            imgLayer.contentsGravity = (placeholderImageMode == "fill") ? .resizeAspectFill : .resizeAspect
+            imgLayer.masksToBounds = true
+
+            rect.addSublayer(imgLayer)
+            self.placeholderImageLayer = imgLayer
+        }
+
+        // Start paused at t=0 (no first frame shown since player layer is hidden)
         p.seek(to: .zero)
         p.pause()
 
@@ -560,10 +641,12 @@ final class TheaterPlayerViewController: NSViewController {
 
     override func viewWillDisappear() {
         super.viewWillDisappear()
-        if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         player?.pause()
+        overlayHideWorkItem?.cancel()
+        overlayHideWorkItem = nil
     }
 }
+
 final class KeyableBorderlessWindow: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }

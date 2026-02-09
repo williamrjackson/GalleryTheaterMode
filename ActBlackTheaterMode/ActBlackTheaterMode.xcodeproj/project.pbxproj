@@ -16,6 +16,7 @@
 
 /* Begin PBXFileReference section */
 		6E0B832F2F3733FC000851C8 /* Preferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Preferences.swift; sourceTree = "<group>"; };
+		6E0B83312F39679C000851C8 /* ActBlackTheaterModeRelease.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ActBlackTheaterModeRelease.entitlements; sourceTree = "<group>"; };
 		6E2BA58A2F35CC3E0055F115 /* ActBlackTheaterMode.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ActBlackTheaterMode.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6E2BA58D2F35CC3E0055F115 /* ActBlackTheaterModeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActBlackTheaterModeApp.swift; sourceTree = "<group>"; };
 		6E2BA58F2F35CC3E0055F115 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -54,6 +55,7 @@
 		6E2BA58C2F35CC3E0055F115 /* ActBlackTheaterMode */ = {
 			isa = PBXGroup;
 			children = (
+				6E0B83312F39679C000851C8 /* ActBlackTheaterModeRelease.entitlements */,
 				6E2BA58D2F35CC3E0055F115 /* ActBlackTheaterModeApp.swift */,
 				6E2BA58F2F35CC3E0055F115 /* ContentView.swift */,
 				6E2BA5912F35CC420055F115 /* Assets.xcassets */,
@@ -306,7 +308,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
-				CODE_SIGN_ENTITLEMENTS = ActBlackTheaterMode/ActBlackTheaterMode.entitlements;
+				CODE_SIGN_ENTITLEMENTS = ActBlackTheaterMode/ActBlackTheaterModeRelease.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
