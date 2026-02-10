@@ -73,6 +73,11 @@ extension Notification.Name {
     static let theaterOffsetYDidChange = Notification.Name("theater.offsetYDidChange")
 }
 
+extension Notification.Name {
+    static let theaterTargetWidthDidChange = Notification.Name("theater.targetWidthDidChange")
+}
+
+
 func registerDefaultPreferences() {
     UserDefaults.standard.register(defaults: [
         PrefKey.targetWidth: 1200,

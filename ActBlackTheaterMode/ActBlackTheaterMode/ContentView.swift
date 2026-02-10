@@ -27,6 +27,10 @@ struct ContentView: View {
             .onReceive(NotificationCenter.default.publisher(for: .theaterOffsetYDidChange)) { _ in
                 yText = "\(TheaterPrefs.loadInt(PrefKey.offsetY, default: 0))"
             }
+            .onReceive(NotificationCenter.default.publisher(for: .theaterTargetWidthDidChange)) { _ in
+                widthText = "\(TheaterPrefs.loadInt(PrefKey.targetWidth, default: 1600))"
+            }
+
             HStack(spacing: 18) {
                 Text("Ready State:").font(.headline)
                 ColorPicker("Background", selection: Binding(
@@ -59,30 +63,43 @@ struct ContentView: View {
 
                 Spacer()
             }
-
+            Spacer()
+            Spacer()
             Button("Load Video File") {
                 chooseAndPlay()
-            }
+            }.frame(maxWidth: .infinity, alignment: .center)
             .keyboardShortcut(.defaultAction)
             Spacer()
-            Spacer()
-            Text("""
-            Playback Controls:
-            
-            Space = Play/Pause
-            ← / → = Seek (Shift = 10s)
-            ↑ / ↓ = Move Y (Shift = 50)
-            Esc = Exit
-            """)
-                .foregroundStyle(.secondary)
-                .font(.subheadline) // slightly larger than footnote
-                .multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 20) {
+                VStack() {
+                    Text("Ready State Controls:")
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    Spacer()
+                    Text("""
+                Space = Start Presentation
+                ← / → = Width
+                ↑ / ↓ = Position
+                Arrow Key Modifiers: Shift: more; Option: less
+                """)
+                    .font(.system(size: 12, weight: .regular, design: .monospaced))
+                }
 
-            Spacer()
+                VStack() {
+                    Text("Playback Controls:")
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    Spacer()
+                    Text("""
+                Space = Play/Pause
+                ← / → = Seek 3 sec (Shift: 10 sec) (Option: 1 frame)
+                ↑ / ↓ = Seek 1 min (Shift:  5 min) (Option:  30 sec)
+                Esc   = Exit
+                """)
+                    .font(.system(size: 12, weight: .regular, design: .monospaced))
+                }
+            }
         }
         .padding(16)
-        .fixedSize() // <- tells SwiftUI “don’t expand; use intrinsic size”
+        .fixedSize()
     }
 
     private func choosePlaceholderImage() {
@@ -223,20 +240,62 @@ final class TheaterWindowController: NSWindowController {
 
             // Arrow keys
             switch event.keyCode {
-            case 126, 125: // Up / Down = adjust Y
-                let bigStep: CGFloat = 50
-                let smallStep: CGFloat = 10
-                let step = event.modifierFlags.contains(.shift) ? bigStep : smallStep
-                let delta: CGFloat = (event.keyCode == 126) ? step : -step
-                vc.adjustOffsetY(by: delta)
+            case 126, 125: // Up / Down = adjust Y; Big seek during playback
+                if vc.isInReadyMode {
+                    let bigStep: CGFloat = 50
+                    let smallStep: CGFloat = 10
+                    let tinyStep: CGFloat = 1
+                    var step = smallStep
+                    if (event.modifierFlags.contains(.option)) {
+                        step = tinyStep
+                    } else if (event.modifierFlags.contains(.shift)) {
+                        step = bigStep
+                    }
+                    let delta: CGFloat = (event.keyCode == 126) ? step : -step
+                    vc.adjustOffsetY(by: delta)
+                }
+                else {
+                    let bigSeek: Double = 300.0
+                    let smallSeek: Double = 60.0
+                    let tinySeek: Double = 30.0
+                    var seek = smallSeek
+                    if (event.modifierFlags.contains(.option)) {
+                        seek = tinySeek
+                    } else if (event.modifierFlags.contains(.shift)) {
+                        seek = bigSeek
+                    }
+                    let delta: Double = (event.keyCode == 124) ? seek : -seek
+                    vc.seekBy(seconds: delta)
+                }
                 return nil
 
-            case 124, 123: // Right / Left = seek
-                let bigSeek: Double = 10.0
-                let smallSeek: Double = 2.0
-                let seek = event.modifierFlags.contains(.shift) ? bigSeek : smallSeek
-                let delta: Double = (event.keyCode == 124) ? seek : -seek
-                vc.seekBy(seconds: delta)
+
+            case 124, 123: // Right / Left
+                if vc.isInReadyMode {
+                    let bigStep: CGFloat = 100
+                    let smallStep: CGFloat = 20
+                    let tinyStep: CGFloat = 1
+                    var step = smallStep
+                    if (event.modifierFlags.contains(.option)) {
+                        step = tinyStep
+                    } else if (event.modifierFlags.contains(.shift)) {
+                        step = bigStep
+                    }
+                    let delta: CGFloat = (event.keyCode == 124) ? step : -step
+                    vc.adjustTargetWidth(by: delta)
+                } else {
+                    if event.modifierFlags.contains(.option) {
+                        let direction = (event.keyCode == 124) ? 1 : -1
+                        vc.pause()
+                        vc.seekByFrames(direction)
+                    } else {
+                        let bigSeek: Double = 10.0
+                        let smallSeek: Double = 3.0
+                        let seek = event.modifierFlags.contains(.shift) ? bigSeek : smallSeek
+                        let delta: Double = (event.keyCode == 124) ? seek : -seek
+                        vc.seekBy(seconds: delta)
+                    }
+                }
                 return nil
 
             default:
@@ -265,7 +324,9 @@ final class TheaterWindowController: NSWindowController {
 final class TheaterPlayerViewController: NSViewController {
     private let url: URL
     private let screenFrame: CGRect
-    private let targetWidth: CGFloat
+    private var targetWidth: CGFloat
+    private var targetHeight: CGFloat = 0
+    private var videoAspect: CGFloat = 9.0 / 16.0 // height/width fallback
     private let backgroundColor: NSColor
     private let rectColor: NSColor
 
@@ -283,9 +344,6 @@ final class TheaterPlayerViewController: NSViewController {
 
     private var overlayLayer: CATextLayer?
     private var overlayHideWorkItem: DispatchWorkItem?
-
-    // Cached for repositioning
-    private var targetHeight: CGFloat = 0
 
     init(url: URL,
          screenFrame: CGRect,
@@ -309,6 +367,8 @@ final class TheaterPlayerViewController: NSViewController {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) not implemented") }
 
+    var isInReadyMode: Bool { !hasStartedPlayback }
+
     override func loadView() {
         self.view = NSView(frame: screenFrame)
         self.view.wantsLayer = true
@@ -325,6 +385,19 @@ final class TheaterPlayerViewController: NSViewController {
         TheaterPrefs.saveInt(PrefKey.offsetY, Int(offsetY.rounded()))
         repositionLayers()
         NotificationCenter.default.post(name: .theaterOffsetYDidChange, object: nil)
+    }
+    
+    func adjustTargetWidth(by delta: CGFloat) {
+        // Only allow width changes before playback starts
+        guard !hasStartedPlayback else { return }
+
+        targetWidth = max(100, targetWidth + delta)  // clamp to something sane
+        targetHeight = max(1, targetWidth * videoAspect)
+
+        TheaterPrefs.saveInt(PrefKey.targetWidth, Int(targetWidth.rounded()))
+        repositionLayers()
+
+        NotificationCenter.default.post(name: .theaterTargetWidthDidChange, object: nil)
     }
 
     private func repositionLayers() {
@@ -442,6 +515,7 @@ final class TheaterPlayerViewController: NSViewController {
         }
 
         let aspect = videoSize.height / max(videoSize.width, 1)
+        videoAspect = aspect
         targetHeight = max(1, targetWidth * aspect)
 
         // 3) Create player + layer (but keep hidden for preview)
@@ -480,9 +554,6 @@ final class TheaterPlayerViewController: NSViewController {
         if let path = placeholderImagePath, !path.isEmpty,
            let nsImage = NSImage(contentsOfFile: path),
            let cg = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) {
-            
-            print("Placeholder image exists:", FileManager.default.fileExists(atPath: path))
-            print("NSImage load:", NSImage(contentsOfFile: path) as Any)
 
             let imgLayer = CALayer()
             imgLayer.frame = rect.bounds
@@ -508,11 +579,11 @@ final class TheaterPlayerViewController: NSViewController {
         guard let root = self.view.layer else { return }
 
         let text = """
-        Controls:
-        Space  = Play/Pause
-        ← / →  = Seek 2s   (Shift = 10s)
-        ↑ / ↓  = Move Y 10 (Shift = 50)
-        Esc    = Exit
+        Ready Mode Controls:                                                    Playback Controls:
+        Space  = Start Presentation                                             Space  = Play/Pause
+        ← / →  = Width                                                          ← / →  = Seek 3 sec   (Shift = 10 sec)   (Option = 1 frame)
+        ↑ / ↓  = Position                                                       ↑ / ↓  = Seek 1 min   (Shift = 5 min)    (Option = 30 sec)
+        Arrow Key Modifiers: Shift = more; Option = less                        Esc    = Exit
         """
 
         let tl = CATextLayer()
@@ -520,7 +591,7 @@ final class TheaterPlayerViewController: NSViewController {
         tl.font = NSFont.monospacedSystemFont(ofSize: 16, weight: .regular)
         tl.fontSize = 16
         tl.alignmentMode = .left
-        tl.isWrapped = true
+        tl.isWrapped = false
         tl.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
 
         // Styling
@@ -529,11 +600,12 @@ final class TheaterPlayerViewController: NSViewController {
         tl.cornerRadius = 12
         tl.masksToBounds = true
 
-        // Layout: bottom-left with padding
-        // (CATextLayer doesn't auto-size nicely; give it a sane box)
+        // Layout: bottom full width with padding
         let padding: CGFloat = 24
-        let boxW: CGFloat = 520
         let boxH: CGFloat = 150
+        let viewWidth = self.view.bounds.width
+        let boxW = max(200, viewWidth - (padding * 2))
+        
         tl.frame = CGRect(x: padding, y: padding, width: boxW, height: boxH)
 
         // Start hidden
@@ -617,7 +689,14 @@ final class TheaterPlayerViewController: NSViewController {
             p.play()
         }
     }
-
+    func pause() {
+        guard let p = player else { return }
+        
+        if p.timeControlStatus == .playing {
+            p.pause()
+        }
+    }
+    
     func seekBy(seconds delta: Double) {
         guard let p = player, let item = p.currentItem else { return }
 
@@ -637,6 +716,24 @@ final class TheaterPlayerViewController: NSViewController {
 
         let newTime = CMTime(seconds: newSeconds, preferredTimescale: 600)
         p.seek(to: newTime, toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+    
+    func seekByFrames(_ frameCount: Int) {
+        guard let player = player,
+              let item = player.currentItem,
+              let track = item.asset.tracks(withMediaType: .video).first
+        else { return }
+
+        let fps = track.nominalFrameRate
+        guard fps > 0 else { return }
+
+        let frameDuration = CMTime(value: 1, timescale: CMTimeScale(fps))
+
+        let current = player.currentTime()
+        let delta = CMTimeMultiply(frameDuration, multiplier: Int32(frameCount))
+        let newTime = CMTimeAdd(current, delta)
+
+        player.seek(to: newTime, toleranceBefore: .zero, toleranceAfter: .zero)
     }
 
     override func viewWillDisappear() {

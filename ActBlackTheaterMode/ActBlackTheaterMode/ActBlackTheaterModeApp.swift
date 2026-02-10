@@ -10,9 +10,8 @@ struct ActBlackTheaterModeApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .frame(minWidth: 420, minHeight: 260, maxHeight: 420)
         }
-        .windowResizability(.contentSize)  // <- fits to content, no manual sizing
+        .windowResizability(.contentSize)
         .windowStyle(.titleBar)
     }
 }
