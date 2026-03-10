@@ -2,7 +2,7 @@
 
 A lightweight macOS fullscreen video playback tool designed for museum and gallery environments.
 
-**TheaterModePlayer** presents a selected video in a clean, borderless, black fullscreen window — ideal for projection surfaces and controlled presentation spaces. It allows precise width control and live vertical positioning adjustments.
+**TheaterModePlayer** presents a selected video in a clean, borderless, black fullscreen window for projection surfaces and controlled presentation spaces. It allows precise width control and live vertical positioning adjustments.
 
 Built using native macOS frameworks (Swift + AVFoundation).
 
