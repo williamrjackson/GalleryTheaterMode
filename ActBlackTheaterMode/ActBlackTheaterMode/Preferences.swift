@@ -11,6 +11,16 @@ import AppKit
 enum PrefKey {
     static let targetWidth = "theater.targetWidth"
     static let offsetY = "theater.offsetY"
+    static let brightness = "theater.brightness"
+    static let displayModeEnabled = "theater.displayMode.enabled"
+    static let displayModeWidth = "theater.displayMode.width"
+    static let displayModeHeight = "theater.displayMode.height"
+    static let displayModeRefresh = "theater.displayMode.refresh"
+    static let displayModeRestorePending = "theater.displayMode.restorePending"
+    static let displayModeOriginalDisplayID = "theater.displayMode.original.displayID"
+    static let displayModeOriginalWidth = "theater.displayMode.original.width"
+    static let displayModeOriginalHeight = "theater.displayMode.original.height"
+    static let displayModeOriginalRefresh = "theater.displayMode.original.refresh"
     
     static let bgColorR = "theater.bgColor.r"
     static let bgColorG = "theater.bgColor.g"
@@ -82,11 +92,21 @@ func registerDefaultPreferences() {
     UserDefaults.standard.register(defaults: [
         PrefKey.targetWidth: 1200,
         PrefKey.offsetY: 0,
+        PrefKey.brightness: 0.0,
+        PrefKey.displayModeEnabled: false,
+        PrefKey.displayModeWidth: 1920,
+        PrefKey.displayModeHeight: 1080,
+        PrefKey.displayModeRefresh: 60.0,
+        PrefKey.displayModeRestorePending: false,
+        PrefKey.displayModeOriginalDisplayID: 0,
+        PrefKey.displayModeOriginalWidth: 0,
+        PrefKey.displayModeOriginalHeight: 0,
+        PrefKey.displayModeOriginalRefresh: 0.0,
 
         // Background default
-        PrefKey.bgColorR: 0.541,
-        PrefKey.bgColorG: 0.145,
-        PrefKey.bgColorB: 0.200,
+        PrefKey.bgColorR: 52.0 / 255.0,
+        PrefKey.bgColorG: 0.0,
+        PrefKey.bgColorB: 13.0 / 255.0,
         PrefKey.bgColorA: 1.0,
 
         // Placeholder rectangle default
@@ -96,4 +116,3 @@ func registerDefaultPreferences() {
         PrefKey.rectColorA: 1.0,
     ])
 }
-

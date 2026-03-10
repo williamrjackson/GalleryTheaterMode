@@ -6,6 +6,8 @@ A lightweight macOS fullscreen video playback tool designed for museum and galle
 
 Built using native macOS frameworks (Swift + AVFoundation).
 
+[Download Link](https://www.dropbox.com/scl/fi/n7o7zmzolg763f2v2givg/ActBlackTheaterMode.zip?rlkey=ltx8ngrqpa46lg98hf3ql12kt&st=bxaojaio&dl=0)    
+
 ---
 
 ## Features
@@ -13,11 +15,15 @@ Built using native macOS frameworks (Swift + AVFoundation).
 - Borderless fullscreen playback 
 - Solid black background for projection environments
 - Adjustable target video width, maintaining aspect ratio
+- Adjustable playback brightness with immediate visual feedback
 - Customizable "Ready State" supporting placeholder image
+- Updated default Ready State background color: RGB (52, 0, 13)
 - Ready State controls to adjust height/width live
 - Animated "house lights down" fade on initial play from Ready State
 - Keyboard-based transport controls
-- Settings persistence (remembers width, Y offset & Ready State colors)
+- Optional display mode switching (resolution + refresh rate) on presentation start
+- Automatic display mode restore on close/quit, plus recovery on next launch after unexpected exits
+- Settings persistence (remembers width, Y offset, brightness, display mode settings, and Ready State colors)
 - Hides mouse in Presentation Mode
 - Automatically prefers external display 
 - No runtime dependencies beyond macOS
@@ -31,8 +37,8 @@ Built using native macOS frameworks (Swift + AVFoundation).
 
 In Ready State:
 
-| Key | Ready State Action | Playback Action 
-|-----|--------------------|----------------
+| Key | Ready State Action | Playback Action |
+|-----|--------------------|-----------------|
 | **Space** | Start Presentation | Play / Pause |
 | **← / →** | Player Width Adjustment | Seek ±3 Seconds |
 | **Shift + ← / →** | Coarse Width Adjustment | Seek ±10 Seconds |
@@ -40,6 +46,8 @@ In Ready State:
 | **↑ / ↓** | Player Vertical Position Adjustment | Seek ±1 Minute |
 | **Shift + ↑ / ↓** | Coarse Vertical Adjustment | Seek ±5 Minutes |
 | **Option + ↑ / ↓** | Fine Vertical Adjustment | Seek ±30 Seconds |
+| **[ / ]** | Brightness Down / Up | Brightness Down / Up |
+| **Option + [ / ]** | Fine Brightness Down / Up | Fine Brightness Down / Up |
 | **Esc** | N/A | Exit playback |
 
 
@@ -47,15 +55,24 @@ If a non-handled key is pressed, an on-screen overlay briefly reappears showing 
 
 ---
 
+## Display Mode Switching
+
+- Enable `Set Display Resolution` to switch the active display mode when presentation starts.
+- Configure `Display Width`, `Display Height`, and `Display Hz` in the main window.
+- Enter `0` for `Display Hz` to use fallback behavior (highest refresh at that resolution).
+- On theater window close (or app quit), the app restores the user's original display mode.
+- If the app exits unexpectedly while a switched mode is active, restore is attempted on next launch.
+
 ## How It Works
 
 1. Launch the app.
 2. Optionally select Ready State placeholder image.
-3. Choose a video file.
-4. Playback opens fullscreen on the preferred display (external projector if connected).
-5. Adjust width and positioning using arrow keys if needed.
-6. Begin presentation by typing SPACE
-7. During playback SPACE pauses & ESC exits playback.
+3. Optionally enable display mode switching and set resolution/refresh.
+4. Choose a video file.
+5. Playback opens fullscreen on the preferred display (external projector if connected).
+6. Adjust width, position, and brightness with keyboard controls if needed.
+7. Begin presentation by typing SPACE.
+8. During playback, SPACE pauses and ESC exits playback.
 
 Settings persist between launches.
 

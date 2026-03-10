@@ -1,12 +1,17 @@
 import SwiftUI
 import AVFoundation
 import AppKit
+import Foundation
 import UniformTypeIdentifiers
 
 // MARK: - UI
 struct ContentView: View {
     @State private var widthText: String = "\(TheaterPrefs.loadInt(PrefKey.targetWidth))"
     @State private var yText: String = "\(TheaterPrefs.loadInt(PrefKey.offsetY))"
+    @State private var displayModeEnabled: Bool = TheaterPrefs.loadBool(PrefKey.displayModeEnabled, default: false)
+    @State private var displayWidthText: String = "\(TheaterPrefs.loadInt(PrefKey.displayModeWidth, default: 1920))"
+    @State private var displayHeightText: String = "\(TheaterPrefs.loadInt(PrefKey.displayModeHeight, default: 1080))"
+    @State private var displayRefreshText: String = String(format: "%.2f", TheaterPrefs.loadDouble(PrefKey.displayModeRefresh, default: 60.0))
     @State private var bgColor: NSColor = TheaterPrefs.loadColor(
         r: PrefKey.bgColorR, g: PrefKey.bgColorG, b: PrefKey.bgColorB, a: PrefKey.bgColorA)
     @State private var rectColor: NSColor = TheaterPrefs.loadColor(
@@ -29,6 +34,22 @@ struct ContentView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: .theaterTargetWidthDidChange)) { _ in
                 widthText = "\(TheaterPrefs.loadInt(PrefKey.targetWidth, default: 1600))"
+            }
+
+            HStack(spacing: 12) {
+                Toggle("Set Display Resolution", isOn: $displayModeEnabled)
+                    .toggleStyle(.switch)
+
+                LabeledTextField(label: "Display Width", text: $displayWidthText, width: 120)
+                    .opacity(displayModeEnabled ? 1.0 : 0.55)
+                    .disabled(!displayModeEnabled)
+                LabeledTextField(label: "Display Height", text: $displayHeightText, width: 120)
+                    .opacity(displayModeEnabled ? 1.0 : 0.55)
+                    .disabled(!displayModeEnabled)
+                LabeledTextField(label: "Display Hz", text: $displayRefreshText, width: 100)
+                    .opacity(displayModeEnabled ? 1.0 : 0.55)
+                    .disabled(!displayModeEnabled)
+                Spacer()
             }
 
             HStack(spacing: 18) {
@@ -75,10 +96,11 @@ struct ContentView: View {
                     Text("Ready State Controls:")
                         .font(.system(size: 13, weight: .bold, design: .monospaced))
                     Spacer()
-                    Text("""
+                Text("""
                 Space = Start Presentation
                 ← / → = Width
                 ↑ / ↓ = Position
+                [ / ] = Brightness (Option: finer)
                 Arrow Key Modifiers: Shift: more; Option: less
                 """)
                     .font(.system(size: 12, weight: .regular, design: .monospaced))
@@ -88,10 +110,11 @@ struct ContentView: View {
                     Text("Playback Controls:")
                         .font(.system(size: 13, weight: .bold, design: .monospaced))
                     Spacer()
-                    Text("""
+                Text("""
                 Space = Play/Pause
                 ← / → = Seek 3 sec (Shift: 10 sec) (Option: 1 frame)
                 ↑ / ↓ = Seek 1 min (Shift:  5 min) (Option:  30 sec)
+                [ / ] = Brightness (Option: finer)
                 Esc   = Exit
                 """)
                     .font(.system(size: 12, weight: .regular, design: .monospaced))
@@ -120,14 +143,25 @@ struct ContentView: View {
     private func chooseAndPlay() {
         let targetW = Int(widthText) ?? 1600
         let oy = Int(yText) ?? 0
+        let displayW = max(1, Int(displayWidthText) ?? TheaterPrefs.loadInt(PrefKey.displayModeWidth, default: 1920))
+        let displayH = max(1, Int(displayHeightText) ?? TheaterPrefs.loadInt(PrefKey.displayModeHeight, default: 1080))
+        let displayHz = max(0.0, Double(displayRefreshText) ?? TheaterPrefs.loadDouble(PrefKey.displayModeRefresh, default: 60.0))
         
         // Persist base settings
         TheaterPrefs.saveInt(PrefKey.targetWidth, targetW)
         TheaterPrefs.saveInt(PrefKey.offsetY, oy)
+        TheaterPrefs.saveBool(PrefKey.displayModeEnabled, displayModeEnabled)
+        TheaterPrefs.saveInt(PrefKey.displayModeWidth, displayW)
+        TheaterPrefs.saveInt(PrefKey.displayModeHeight, displayH)
+        TheaterPrefs.saveDouble(PrefKey.displayModeRefresh, displayHz)
         TheaterPrefs.saveColor(
             bgColor, r: PrefKey.bgColorR, g: PrefKey.bgColorG, b: PrefKey.bgColorB, a: PrefKey.bgColorA)
         TheaterPrefs.saveColor(
             rectColor, r: PrefKey.rectColorR, g: PrefKey.rectColorG, b: PrefKey.rectColorB, a: PrefKey.rectColorA)
+
+        displayWidthText = "\(displayW)"
+        displayHeightText = "\(displayH)"
+        displayRefreshText = String(format: "%.2f", displayHz)
         
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.movie, .mpeg4Movie, .quickTimeMovie]
@@ -184,6 +218,7 @@ final class TheaterWindowController: NSWindowController {
         // Prefer external display if present (projector is often last)
         let targetScreen = NSScreen.screens.last ?? NSScreen.main!
         let frame = targetScreen.frame
+        DisplayModeController.shared.activateIfNeeded(for: targetScreen)
 
         let vc = TheaterPlayerViewController(
             url: url,
@@ -236,6 +271,26 @@ final class TheaterWindowController: NSWindowController {
             if event.keyCode == 49 {
                 vc.togglePlayPause()
                 return nil
+            }
+
+            // [ / ] and - / = adjust brightness
+            if let key = event.charactersIgnoringModifiers?.lowercased() {
+                switch key {
+                case "[", "-", "_":
+                    let coarseStep: CGFloat = 0.05
+                    let fineStep: CGFloat = 0.01
+                    let step = event.modifierFlags.contains(.option) ? fineStep : coarseStep
+                    vc.adjustBrightness(by: -step)
+                    return nil
+                case "]", "=", "+":
+                    let coarseStep: CGFloat = 0.05
+                    let fineStep: CGFloat = 0.01
+                    let step = event.modifierFlags.contains(.option) ? fineStep : coarseStep
+                    vc.adjustBrightness(by: step)
+                    return nil
+                default:
+                    break
+                }
             }
 
             // Arrow keys
@@ -312,6 +367,7 @@ final class TheaterWindowController: NSWindowController {
 
             // Always restore cursor, even if window closed not via ESC
             NSCursor.unhide()
+            DisplayModeController.shared.restoreActiveDisplayMode()
 
             // Ensure config UI reflects latest value when theater closes
             NotificationCenter.default.post(name: .theaterOffsetYDidChange, object: nil)
@@ -341,6 +397,8 @@ final class TheaterPlayerViewController: NSViewController {
 
     private var player: AVPlayer?
     private var playerLayer: AVPlayerLayer?
+    private var brightnessOverlayLayer: CALayer?
+    private var brightness: CGFloat = CGFloat(TheaterPrefs.loadDouble(PrefKey.brightness, default: 0.0))
 
     private var overlayLayer: CATextLayer?
     private var overlayHideWorkItem: DispatchWorkItem?
@@ -400,12 +458,20 @@ final class TheaterPlayerViewController: NSViewController {
         NotificationCenter.default.post(name: .theaterTargetWidthDidChange, object: nil)
     }
 
+    func adjustBrightness(by delta: CGFloat) {
+        brightness = max(-1.0, min(1.0, brightness + delta))
+        TheaterPrefs.saveDouble(PrefKey.brightness, Double(brightness))
+        applyBrightness()
+        pingOverlay()
+    }
+
     private func repositionLayers() {
         let newFrame = computeLayerFrame()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
 
         playerLayer?.frame = newFrame
+        brightnessOverlayLayer?.frame = newFrame
         placeholderLayer?.frame = newFrame
         placeholderImageLayer?.frame = placeholderLayer?.bounds ?? .zero
         
@@ -528,6 +594,11 @@ final class TheaterPlayerViewController: NSViewController {
         pl.opacity = 0.0
         self.playerLayer = pl
 
+        let brightnessOverlay = CALayer()
+        brightnessOverlay.backgroundColor = NSColor.clear.cgColor
+        brightnessOverlay.opacity = 0.0
+        self.brightnessOverlayLayer = brightnessOverlay
+
         // 4) Create placeholder rectangle
         let rect = CALayer()
         rect.backgroundColor = rectColor.cgColor
@@ -539,15 +610,19 @@ final class TheaterPlayerViewController: NSViewController {
         // 5) Compute frame now that targetHeight is valid
         let f = computeLayerFrame()
         pl.frame = f
+        brightnessOverlay.frame = f
         rect.frame = f
 
         // Ensure placeholder is on top
         pl.zPosition = 0
+        brightnessOverlay.zPosition = 0.5
         rect.zPosition = 1
 
         // 6) Add sublayers (order matters visually)
         root.addSublayer(pl)
+        root.addSublayer(brightnessOverlay)
         root.addSublayer(rect)
+        applyBrightness()
 
         // 7) Pause at start (don’t show first frame yet)
         // Optional placeholder image inside rect
@@ -583,6 +658,7 @@ final class TheaterPlayerViewController: NSViewController {
         Space  = Start Presentation                                             Space  = Play/Pause
         ← / →  = Width                                                          ← / →  = Seek 3 sec   (Shift = 10 sec)   (Option = 1 frame)
         ↑ / ↓  = Position                                                       ↑ / ↓  = Seek 1 min   (Shift = 5 min)    (Option = 30 sec)
+        [ / ]  = Brightness (Option = finer)                                    [ / ]  = Brightness (Option = finer)
         Arrow Key Modifiers: Shift = more; Option = less                        Esc    = Exit
         """
 
@@ -670,6 +746,25 @@ final class TheaterPlayerViewController: NSViewController {
         )
 
         return CGRect(origin: originInWindow, size: CGSize(width: targetWidth, height: targetHeight))
+    }
+
+    private func applyBrightness() {
+        guard let overlay = brightnessOverlayLayer else { return }
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        if brightness > 0 {
+            // Positive brightness: white wash
+            overlay.backgroundColor = NSColor.white.cgColor
+            overlay.opacity = Float(min(0.85, brightness))
+        } else if brightness < 0 {
+            // Negative brightness: black tint
+            overlay.backgroundColor = NSColor.black.cgColor
+            overlay.opacity = Float(min(1.0, -brightness))
+        } else {
+            overlay.opacity = 0.0
+        }
+        CATransaction.commit()
     }
     
     func togglePlayPause() {

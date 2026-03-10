@@ -5,6 +5,7 @@ struct ActBlackTheaterModeApp: App {
     
     init() {
         registerDefaultPreferences()
+        DisplayModeController.shared.restorePendingModeIfNeeded()
     }
 
     var body: some Scene {
