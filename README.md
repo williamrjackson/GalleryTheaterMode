@@ -21,7 +21,7 @@ Built using native macOS frameworks (Swift + AVFoundation).
 - Animated "house lights down" fade on initial play from Ready State
 - Keyboard-based transport controls
 - Configurable resolution & frame rate on presentation start
-- Settings persistence: size, Y offset, brightness, display mode settings, and Ready State colors)
+- Settings persistence: size, Y offset, brightness, display mode settings, and Ready State colors
 - Hides mouse in Presentation Mode
 - Automatically prefers external display 
 - No runtime dependencies beyond macOS
