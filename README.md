@@ -27,8 +27,8 @@ Built using native macOS frameworks (Swift + AVFoundation).
 - No runtime dependencies beyond macOS
 
 ---
-![UI](TheaterModeScreenshot_0.png)
-![Presentation](TheaterModeScreenshot_1.png)
+![UI](https://github.com/williamrjackson/GalleryTheaterMode/raw/master/TheaterModeScreenshot_0.png)
+![Presentation](https://github.com/williamrjackson/GalleryTheaterMode/raw/master/TheaterModeScreenshot_1.png)
 
 
 ## Controls
