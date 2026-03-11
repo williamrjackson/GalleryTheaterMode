@@ -16,14 +16,12 @@ Built using native macOS frameworks (Swift + AVFoundation).
 - Solid black background for projection environments
 - Adjustable target video width, maintaining aspect ratio
 - Adjustable playback brightness with immediate visual feedback
-- Customizable "Ready State" supporting placeholder image
-- Updated default Ready State background color: RGB (52, 0, 13)
+- Customizable "Ready State" supporting placeholder imagebackground colors
 - Ready State controls to adjust height/width live
 - Animated "house lights down" fade on initial play from Ready State
 - Keyboard-based transport controls
-- Optional display mode switching (resolution + refresh rate) on presentation start
-- Automatic display mode restore on close/quit, plus recovery on next launch after unexpected exits
-- Settings persistence (remembers width, Y offset, brightness, display mode settings, and Ready State colors)
+- Configurable resolution & frame rate on presentation start
+- Settings persistence: size, Y offset, brightness, display mode settings, and Ready State colors)
 - Hides mouse in Presentation Mode
 - Automatically prefers external display 
 - No runtime dependencies beyond macOS
