@@ -28,7 +28,7 @@ Built using native macOS frameworks (Swift + AVFoundation).
 
 ---
 ![UI](TheaterModeScreenshot_0.png)
-![Presentation](TheaterModeScreenshot_1.png)
+![Presentation](TheaterModeDemo_0.gif)
 
 
 ## Controls
