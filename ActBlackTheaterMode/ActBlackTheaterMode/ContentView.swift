@@ -102,6 +102,7 @@ struct ContentView: View {
                 ↑ / ↓ = Position
                 [ / ] = Brightness (Option: finer)
                 Arrow Key Modifiers: Shift: more; Option: less
+                Esc   = Exit
                 """)
                     .font(.system(size: 12, weight: .regular, design: .monospaced))
                 }
@@ -114,8 +115,11 @@ struct ContentView: View {
                 Space = Play/Pause
                 ← / → = Seek 3 sec (Shift: 10 sec) (Option: 1 frame)
                 ↑ / ↓ = Seek 1 min (Shift:  5 min) (Option:  30 sec)
+                Cmd + ← / → = Width (Shift: coarse, Option: fine)
+                Cmd + ↑ / ↓ = Height (Shift: coarse, Option: fine)
+                Cmd + 0 = Reset Aspect Lock
                 [ / ] = Brightness (Option: finer)
-                Esc   = Exit
+                Esc   = Return to Ready
                 """)
                     .font(.system(size: 12, weight: .regular, design: .monospaced))
                 }
@@ -261,15 +265,32 @@ final class TheaterWindowController: NSWindowController {
         NSCursor.hide()
 
         controller.eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { event in
-            // ESC closes
+            // ESC: presentation -> ready, ready -> close
             if event.keyCode == 53 {
-                win.close()
+                if vc.isInReadyMode {
+                    win.close()
+                } else {
+                    vc.returnToReadyMode()
+                }
                 return nil
             }
 
             // Space toggles play/pause (first press triggers intro transition)
             if event.keyCode == 49 {
                 vc.togglePlayPause()
+                return nil
+            }
+
+            // Tab shows controls overlay
+            if event.keyCode == 48 {
+                vc.pingOverlay()
+                return nil
+            }
+
+            // Cmd+0 resets playback aspect lock and height
+            if event.modifierFlags.contains(.command),
+               event.charactersIgnoringModifiers == "0" {
+                vc.resetPlaybackAspectLock()
                 return nil
             }
 
@@ -310,6 +331,21 @@ final class TheaterWindowController: NSWindowController {
                     vc.adjustOffsetY(by: delta)
                 }
                 else {
+                    if event.modifierFlags.contains(.command) {
+                        let bigStep: CGFloat = 100
+                        let smallStep: CGFloat = 20
+                        let tinyStep: CGFloat = 1
+                        var step = smallStep
+                        if (event.modifierFlags.contains(.option)) {
+                            step = tinyStep
+                        } else if (event.modifierFlags.contains(.shift)) {
+                            step = bigStep
+                        }
+                        let delta: CGFloat = (event.keyCode == 126) ? step : -step
+                        vc.adjustPlaybackHeight(by: delta)
+                        return nil
+                    }
+
                     let bigSeek: Double = 300.0
                     let smallSeek: Double = 60.0
                     let tinySeek: Double = 30.0
@@ -339,6 +375,21 @@ final class TheaterWindowController: NSWindowController {
                     let delta: CGFloat = (event.keyCode == 124) ? step : -step
                     vc.adjustTargetWidth(by: delta)
                 } else {
+                    if event.modifierFlags.contains(.command) {
+                        let bigStep: CGFloat = 100
+                        let smallStep: CGFloat = 20
+                        let tinyStep: CGFloat = 1
+                        var step = smallStep
+                        if (event.modifierFlags.contains(.option)) {
+                            step = tinyStep
+                        } else if (event.modifierFlags.contains(.shift)) {
+                            step = bigStep
+                        }
+                        let delta: CGFloat = (event.keyCode == 124) ? step : -step
+                        vc.adjustPlaybackWidth(by: delta)
+                        return nil
+                    }
+
                     if event.modifierFlags.contains(.option) {
                         let direction = (event.keyCode == 124) ? 1 : -1
                         vc.pause()
@@ -354,7 +405,6 @@ final class TheaterWindowController: NSWindowController {
                 return nil
 
             default:
-                vc.pingOverlay()
                 return nil
             }
         }
@@ -399,9 +449,11 @@ final class TheaterPlayerViewController: NSViewController {
     private var playerLayer: AVPlayerLayer?
     private var brightnessOverlayLayer: CALayer?
     private var brightness: CGFloat = CGFloat(TheaterPrefs.loadDouble(PrefKey.brightness, default: 0.0))
+    private var isIndependentPlaybackSizing = false
 
     private var overlayLayer: CATextLayer?
     private var overlayHideWorkItem: DispatchWorkItem?
+    private var delayedPlayWorkItem: DispatchWorkItem?
 
     init(url: URL,
          screenFrame: CGRect,
@@ -462,7 +514,6 @@ final class TheaterPlayerViewController: NSViewController {
         brightness = max(-1.0, min(1.0, brightness + delta))
         TheaterPrefs.saveDouble(PrefKey.brightness, Double(brightness))
         applyBrightness()
-        pingOverlay()
     }
 
     private func repositionLayers() {
@@ -489,9 +540,12 @@ final class TheaterPlayerViewController: NSViewController {
 
         fadePlayerIn(after: d1, duration: d2)
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + d1 + d2) { [weak self] in
+        delayedPlayWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
             self?.player?.play()
         }
+        delayedPlayWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + d1 + d2, execute: work)
     }
 
     private func fadePlayerIn(after delay: CFTimeInterval, duration: CFTimeInterval) {
@@ -646,7 +700,6 @@ final class TheaterPlayerViewController: NSViewController {
         p.pause()
 
         setupOverlayIfNeeded()
-        pingOverlay()
     }
 
     private func setupOverlayIfNeeded() {
@@ -658,8 +711,12 @@ final class TheaterPlayerViewController: NSViewController {
         Space  = Start Presentation                                             Space  = Play/Pause
         ← / →  = Width                                                          ← / →  = Seek 3 sec   (Shift = 10 sec)   (Option = 1 frame)
         ↑ / ↓  = Position                                                       ↑ / ↓  = Seek 1 min   (Shift = 5 min)    (Option = 30 sec)
+                                                                                Cmd + ← / → = Width   (Shift = coarse)   (Option = fine)
+                                                                                Cmd + ↑ / ↓ = Height  (Shift = coarse)   (Option = fine)
+                                                                                Cmd + 0 = Reset Aspect Lock
         [ / ]  = Brightness (Option = finer)                                    [ / ]  = Brightness (Option = finer)
-        Arrow Key Modifiers: Shift = more; Option = less                        Esc    = Exit
+        Arrow Key Modifiers: Shift = more; Option = less                        Esc    = Return to Ready
+        Esc    = Exit
         """
 
         let tl = CATextLayer()
@@ -675,6 +732,7 @@ final class TheaterPlayerViewController: NSViewController {
         tl.backgroundColor = NSColor(white: 0.0, alpha: 0.55).cgColor
         tl.cornerRadius = 12
         tl.masksToBounds = true
+        tl.zPosition = 10_000
 
         // Layout: bottom full width with padding
         let padding: CGFloat = 24
@@ -766,6 +824,36 @@ final class TheaterPlayerViewController: NSViewController {
         }
         CATransaction.commit()
     }
+
+    func returnToReadyMode() {
+        guard hasStartedPlayback else { return }
+
+        delayedPlayWorkItem?.cancel()
+        delayedPlayWorkItem = nil
+
+        player?.pause()
+        player?.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero)
+        hasStartedPlayback = false
+
+        restoreReadyStateVisuals()
+    }
+
+    private func restoreReadyStateVisuals() {
+        guard let root = self.view.layer else { return }
+
+        root.removeAnimation(forKey: "bgToBlack")
+        playerLayer?.removeAnimation(forKey: "playerIn")
+        placeholderLayer?.removeAnimation(forKey: "placeholderFade")
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        root.backgroundColor = backgroundColor.cgColor
+        playerLayer?.videoGravity = .resizeAspect
+        playerLayer?.opacity = 0.0
+        placeholderLayer?.opacity = 1.0
+        CATransaction.commit()
+        isIndependentPlaybackSizing = false
+    }
     
     func togglePlayPause() {
         guard let p = player else { return }
@@ -831,11 +919,41 @@ final class TheaterPlayerViewController: NSViewController {
         player.seek(to: newTime, toleranceBefore: .zero, toleranceAfter: .zero)
     }
 
+    func adjustPlaybackWidth(by delta: CGFloat) {
+        guard hasStartedPlayback else { return }
+        if !isIndependentPlaybackSizing {
+            isIndependentPlaybackSizing = true
+            playerLayer?.videoGravity = .resize
+        }
+        targetWidth = max(100, targetWidth + delta)
+        repositionLayers()
+    }
+
+    func adjustPlaybackHeight(by delta: CGFloat) {
+        guard hasStartedPlayback else { return }
+        if !isIndependentPlaybackSizing {
+            isIndependentPlaybackSizing = true
+            playerLayer?.videoGravity = .resize
+        }
+        targetHeight = max(100, targetHeight + delta)
+        repositionLayers()
+    }
+
+    func resetPlaybackAspectLock() {
+        guard hasStartedPlayback else { return }
+        isIndependentPlaybackSizing = false
+        playerLayer?.videoGravity = .resizeAspect
+        targetHeight = max(1, targetWidth * videoAspect)
+        repositionLayers()
+    }
+
     override func viewWillDisappear() {
         super.viewWillDisappear()
         player?.pause()
         overlayHideWorkItem?.cancel()
         overlayHideWorkItem = nil
+        delayedPlayWorkItem?.cancel()
+        delayedPlayWorkItem = nil
     }
 }
 

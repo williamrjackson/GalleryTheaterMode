@@ -44,12 +44,16 @@ In Ready State:
 | **↑ / ↓** | Player Vertical Position Adjustment | Seek ±1 Minute |
 | **Shift + ↑ / ↓** | Coarse Vertical Adjustment | Seek ±5 Minutes |
 | **Option + ↑ / ↓** | Fine Vertical Adjustment | Seek ±30 Seconds |
+| **Cmd + ← / →** | N/A | Independent Width Resize |
+| **Cmd + ↑ / ↓** | N/A | Independent Height Resize |
+| **Cmd + 0** | N/A | Re-lock Aspect Ratio |
 | **[ / ]** | Brightness Down / Up | Brightness Down / Up |
 | **Option + [ / ]** | Fine Brightness Down / Up | Fine Brightness Down / Up |
-| **Esc** | N/A | Exit playback |
+| **Tab** | Show Controls Overlay | Show Controls Overlay |
+| **Esc** | Exit playback | Return to Ready State |
 
 
-If a non-handled key is pressed, an on-screen overlay briefly reappears showing the controls.
+Press `Tab` to show the on-screen controls overlay.
 
 ---
 
@@ -70,7 +74,7 @@ If a non-handled key is pressed, an on-screen overlay briefly reappears showing 
 5. Playback opens fullscreen on the preferred display (external projector if connected).
 6. Adjust width, position, and brightness with keyboard controls if needed.
 7. Begin presentation by typing SPACE.
-8. During playback, SPACE pauses and ESC exits playback.
+8. During playback, SPACE pauses, ESC returns to Ready State, and pressing ESC again exits playback.
 
 Settings persist between launches.
 
