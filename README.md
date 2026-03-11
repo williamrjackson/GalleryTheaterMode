@@ -22,7 +22,7 @@ Built using native macOS frameworks (Swift + AVFoundation).
 - Keyboard-based transport controls
 - Configurable resolution & frame rate on presentation start
 - Settings persistence: size, Y offset, brightness, display mode settings, and Ready State colors
-- Hides mouse in Presentation Mode
+- Hides mouse cursor in Presentation Mode
 - Automatically prefers external display 
 - No runtime dependencies beyond macOS
 
